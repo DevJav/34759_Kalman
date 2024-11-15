@@ -51,12 +51,13 @@ class KalmanFilter:
                 [0, 0, 0, 0, 1, 0],
                 [0, 0, 0, 0, 0, 1]])
     
-    def __init__(self, id, x, y, z, object_type):
+    def __init__(self, id, x, y, z, object_type, color='blue'):
         self.id = id
         self.x[0] = x
         self.x[2] = y
         self.x[4] = z
         self.object_type = object_type
+        self.color = color
 
     def update(self, Z):
         ### Insert update function
@@ -69,7 +70,6 @@ class KalmanFilter:
         self.x = x_p
         self.P = P_p
 
-        
     def predict(self):
         ### insert predict function
         x_p = np.dot(self.F, self.x) + self.u
@@ -77,3 +77,9 @@ class KalmanFilter:
 
         self.x = x_p
         self.P = P_p
+
+    def get_location(self):
+        return self.x[0].item(), self.x[2].item(), self.x[4].item()
+
+    def __repr__(self) -> str:
+        return f'ID: {self.id}, Location: {self.get_location()}, Object Type: {self.object_type}'
