@@ -8,7 +8,7 @@ MAX_X = 0
 MIN_Z = 0
 MAX_Z = 0
 
-def get_labels()
+def get_labels():
     labels_path = '34759_final_project_rect/seq_01/'
     labels_file = 'labels.txt'
 
