@@ -9,6 +9,9 @@ MAX_X = 0
 MIN_Z = 0
 MAX_Z = 0
 
+DISTANCE_THRESHOLD = 5
+DISCONNECT_THRESHOLD = 10
+
 colors = {
     '0': (255, 0, 0), '1': (0, 255, 0), '2': (0, 0, 255), '3': (255, 255, 0), '4': (255, 0, 255),
     '5': (0, 255, 255), '6': (128, 0, 0), '7': (0, 128, 0), '8': (0, 0, 128), '9': (128, 128, 0),
@@ -50,11 +53,12 @@ def get_location(label):
 def get_object_type(label):
     return label[2]
 
-def plot_point(ax, x, z, color, track_id, object_type, alpha=1.0):
+def plot_point(ax, x, z, color, object_type, track_id=-1, alpha=1.0):
     """Plots a point with text annotation on the specified axis."""
     marker = {'Car': 'x', 'Pedestrian': 'o', 'Cyclist': '^'}.get(object_type, 'o')
     ax.plot(x, z, color=color, marker=marker, alpha=alpha)
-    # ax.text(x, z, track_id, fontsize=12, color=color)
+    if track_id != -1:
+        ax.text(x, z, track_id, fontsize=12, color=color, alpha=alpha)
 
 def get_min_max_x_z(labels):
     min_x, max_x = 0, 0
@@ -106,7 +110,6 @@ if __name__ == '__main__':
     print(MIX_X, MAX_X, MIN_Z, MAX_Z)
 
     current_frame = 0
-    active_objects = []
 
     object_locations = []
     object_types = []
@@ -120,13 +123,10 @@ if __name__ == '__main__':
 
             # calculate distance of all objects to all kalman filters
             distances = {}
-            id = 0
-            for object in object_locations:
-                for kalman in tracked_objects.values():
+            for object_idx, object in enumerate(object_locations):
+                for kalman_idx, kalman in tracked_objects.items():
                     distance = np.linalg.norm(np.array(object) - np.array(kalman.get_location()))
-                    distances[(id, kalman.id)] = float(distance)
-                id += 1
-
+                    distances[(object_idx, kalman_idx)] = float(distance)
 
             # Create a cost matrix
             num_objects = len(object_locations)
@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
             # Fill in the cost matrix using your distance calculations
             for i, object_loc in enumerate(object_locations):
-                for j, kalman in tracked_objects.items():
+                for j, kalman in enumerate(tracked_objects.values()):
                     cost_matrix[i, j] = np.linalg.norm(np.array(object_loc) - np.array(kalman.get_location()))
 
             # Solve the assignment problem
@@ -147,9 +147,8 @@ if __name__ == '__main__':
             unmatched_kalman = set(tracked_objects.keys())
 
 
-            distance_threshold = 100
             for obj_idx, kalman_idx in zip(row_ind, col_ind):
-                if cost_matrix[obj_idx, kalman_idx] <= distance_threshold:
+                if cost_matrix[obj_idx, kalman_idx] <= DISTANCE_THRESHOLD:
                     matches.append((obj_idx, kalman_idx))
                     unmatched_objects.discard(obj_idx)
                     unmatched_kalman.discard(kalman_idx)
@@ -163,26 +162,42 @@ if __name__ == '__main__':
             # update kalman filters
             for obj_idx, kalman_idx in matches:
                 x, y, z = object_locations[obj_idx]
-                tracked_objects[kalman_idx].update(np.array([[x], [y], [z]]))
+                kalman_id = list(tracked_objects.keys())[kalman_idx]
+                tracked_objects[kalman_id].update(np.array([[x], [y], [z]]))
 
             # object not matched create new kalman filter
             for obj_idx in unmatched_objects:
                 x, y, z = object_locations[obj_idx]
                 assigned_color = np.array(colors[str(track_index)])[::-1] / 255
                 new_kalman = KalmanFilter(track_index, x, y, z, object_types[obj_idx], assigned_color)
+                print(f"\033[92mNew object detected. Creating Kalman Filter {new_kalman}\033[0m")
                 tracked_objects[track_index] = new_kalman
                 track_index += 1
+
+            # Collect Kalman filters to remove
+            to_remove = []
+
+            for kalman in tracked_objects.values():
+                if kalman.disconnect_count > DISCONNECT_THRESHOLD:
+                    to_remove.append(kalman.id)
+
+            # Now delete the Kalman filters after the iteration
+            for kalman_id in to_remove:
+                print(f"\033[91mRemoving Kalman Filter {tracked_objects[kalman_id]}\033[0m")
+                del tracked_objects[kalman_id]
 
             # plot points
             for id, obj in tracked_objects.items():
                 x, y, z = obj.get_location()
-                plot_point(ax2, x, z, obj.color, id, obj.object_type)
+                if obj.disconnect_count != 0:
+                    plot_point(ax2, x, z, obj.color, obj.object_type, id, alpha=0.25)
+                else:
+                    plot_point(ax2, x, z, obj.color, obj.object_type, id)
 
             for i in range(len(object_locations)):
-                plot_point(ax1, object_locations[i][0], object_locations[i][2], 'blue', i, object_types[i])
+                plot_point(ax1, object_locations[i][0], object_locations[i][2], 'blue', object_types[i], -1)
             plot_points(ax1, ax2)
             current_frame += 1
-            active_objects = []
             object_locations = []
             object_types = []
 
