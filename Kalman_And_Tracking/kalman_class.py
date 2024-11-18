@@ -3,7 +3,7 @@ import numpy as np
 class KalmanFilter:
     
     def __init__(self, id, x, y, z, object_type, color='blue'):
-        self.dt = 1.0
+        self.dt = 0.1
 
         # The initial state. The robot starts in position 0 with the velocity 0.
         self.x = np.array([[0], # Position along the x-axis
@@ -14,12 +14,13 @@ class KalmanFilter:
                     [0]]) # Velocity along the z-axis
 
         # The initial uncertainty. We start with some very large values.
-        self.P = np.array([[1000, 0, 0, 0, 0, 0],
-                    [0, 1000, 0, 0, 0, 0],
-                    [0, 0, 1000, 0, 0, 0],
-                    [0, 0, 0, 1000, 0, 0],
-                    [0, 0, 0, 0, 1000, 0],
-                    [0, 0, 0, 0, 0, 1000]])
+        self.initial_uncertainty = 10
+        self.P = np.array([[self.initial_uncertainty, 0, 0, 0, 0, 0],
+                    [0, self.initial_uncertainty, 0, 0, 0, 0],
+                    [0, 0, self.initial_uncertainty, 0, 0, 0],
+                    [0, 0, 0, self.initial_uncertainty, 0, 0],
+                    [0, 0, 0, 0, self.initial_uncertainty, 0],
+                    [0, 0, 0, 0, 0, self.initial_uncertainty]])
 
         # The external motion. Set to 0 here.
         self.u = np.array([[0],
@@ -90,3 +91,5 @@ class KalmanFilter:
     def __repr__(self) -> str:
         return f'ID: {self.id}, Location: {self.get_location()}, Object Type: {self.object_type}'
     
+    def get_covariance(self):
+        return self.P
