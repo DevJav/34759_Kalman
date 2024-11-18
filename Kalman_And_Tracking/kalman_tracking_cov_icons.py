@@ -14,6 +14,16 @@ MAX_Z = 0
 DISTANCE_THRESHOLD = 5
 DISCONNECT_THRESHOLD = 10
 
+FRAME_INDEX = 0
+X_INDEX = 13
+Y_INDEX = 14
+Z_INDEX = 15
+OBJECT_TYPE_INDEX = 2
+
+USE_ICON = True
+ADD_TEXT = False
+ADD_COVARIANCE = False
+
 colors = {
     '0': (255, 0, 0), '1': (0, 255, 0), '2': (0, 0, 255), '3': (255, 255, 0), '4': (255, 0, 255),
     '5': (0, 255, 255), '6': (128, 0, 0), '7': (0, 128, 0), '8': (0, 0, 128), '9': (128, 128, 0),
@@ -35,7 +45,7 @@ def recolor_icon(icon_path, color):
     """Recolors an icon with the specified RGB color."""
     # Load the icon as an RGBA image
     icon = Image.open(icon_path).convert("RGBA")
-    r, g, b, a = icon.split()  # Split into channels
+    _, _, _, a = icon.split()  # Split into channels
 
     # Create a color overlay
     tuple_color = tuple(color)
@@ -68,23 +78,27 @@ def get_labels():
     return labels
 
 def get_frame(label):
-    return int(label[0])
+    return int(label[FRAME_INDEX])
 
 def get_location(label):
-    x, y, z = float(label[13]), float(label[14]), float(label[15])
+    x, y, z = float(label[X_INDEX]), float(label[Y_INDEX]), float(label[Z_INDEX])
     return x, y, z
 
 def get_object_type(label):
-    return label[2]
+    return label[OBJECT_TYPE_INDEX]
 
 def plot_point(ax, x, z, color, object_type, track_id=-1, alpha=1.0, covariance=None):
     """Plots a point with text annotation on the specified axis."""
-    icon = get_icon(object_type, color)
-    ax.imshow(icon, extent=[x-1, x+1, z-1, z+1], alpha=alpha)
-    # if track_id != -1:
-    #     ax.text(x, z, track_id, fontsize=12, color=color, alpha=alpha)
-    # if covariance is not None:
-    #     plot_covariance_ellipse(ax, x, z, covariance, color=color, alpha=alpha)
+    if USE_ICON:
+        icon = get_icon(object_type, color)
+        ax.imshow(icon, extent=[x-1, x+1, z-1, z+1], alpha=alpha)
+    else:
+        marker = {'Car': 'x', 'Pedestrian': 'o', 'Cyclist': '^'}.get(object_type, 'o')
+        ax.plot(x, z, color=color, marker=marker, alpha=alpha)
+    if track_id != -1 and ADD_TEXT:
+        ax.text(x, z, track_id, fontsize=12, color=color, alpha=alpha)
+    if covariance is not None and ADD_COVARIANCE:
+        plot_covariance_ellipse(ax, x, z, covariance, color=color, alpha=alpha)
 
 def plot_covariance_ellipse(ax, x, z, covariance, color='blue', alpha=0.2):
     """Plots an ellipse representing the covariance matrix."""
@@ -147,11 +161,10 @@ if __name__ == '__main__':
     labels = get_labels()
 
     MIX_X, MAX_X, MIN_Z, MAX_Z = get_min_max_x_z(labels)
-    print(MIX_X, MAX_X, MIN_Z, MAX_Z)
 
     current_frame = 0
 
-    object_locations = []
+    detected_object_locations = []
     object_types = []
 
     for label in labels:
@@ -163,18 +176,18 @@ if __name__ == '__main__':
 
             # calculate distance of all objects to all kalman filters
             distances = {}
-            for object_idx, object in enumerate(object_locations):
+            for object_idx, object in enumerate(detected_object_locations):
                 for kalman_idx, kalman in tracked_objects.items():
                     distance = np.linalg.norm(np.array(object) - np.array(kalman.get_location()))
                     distances[(object_idx, kalman_idx)] = float(distance)
 
             # Create a cost matrix
-            num_objects = len(object_locations)
+            num_objects = len(detected_object_locations)
             num_kalman_filters = len(tracked_objects)
             cost_matrix = np.full((num_objects, num_kalman_filters), np.inf)  # Default to large costs
 
             # Fill in the cost matrix using your distance calculations
-            for i, object_loc in enumerate(object_locations):
+            for i, object_loc in enumerate(detected_object_locations):
                 for j, kalman in enumerate(tracked_objects.values()):
                     cost_matrix[i, j] = np.linalg.norm(np.array(object_loc) - np.array(kalman.get_location()))
 
@@ -193,21 +206,15 @@ if __name__ == '__main__':
                     unmatched_objects.discard(obj_idx)
                     unmatched_kalman.discard(kalman_idx)
 
-            # Print results
-            # print("Matches:", matches)
-            # print("Unmatched Objects:", unmatched_objects)
-            # print("Unmatched Kalman Filters:", unmatched_kalman)
-
-
             # update kalman filters
             for obj_idx, kalman_idx in matches:
-                x, y, z = object_locations[obj_idx]
+                x, y, z = detected_object_locations[obj_idx]
                 kalman_id = list(tracked_objects.keys())[kalman_idx]
                 tracked_objects[kalman_id].update(np.array([[x], [y], [z]]))
 
             # object not matched create new kalman filter
             for obj_idx in unmatched_objects:
-                x, y, z = object_locations[obj_idx]
+                x, y, z = detected_object_locations[obj_idx]
                 assigned_color = np.array(colors[str(track_index)])[::-1] / 255
                 new_kalman = KalmanFilter(track_index, x, y, z, object_types[obj_idx], assigned_color)
                 print(f"\033[92mNew object detected. Creating Kalman Filter {new_kalman}\033[0m")
@@ -235,11 +242,11 @@ if __name__ == '__main__':
                 else:
                     plot_point(ax2, x, z, obj.color, obj.object_type, id, covariance=covariance)
 
-            for i in range(len(object_locations)):
-                plot_point(ax1, object_locations[i][0], object_locations[i][2], (0,0,1.0), object_types[i], -1)
+            for i in range(len(detected_object_locations)):
+                plot_point(ax1, detected_object_locations[i][0], detected_object_locations[i][2], (0,0,1.0), object_types[i], -1)
             plot_points(ax1, ax2)
             current_frame += 1
-            object_locations = []
+            detected_object_locations = []
             object_types = []
 
         object_type = get_object_type(label)
@@ -247,6 +254,6 @@ if __name__ == '__main__':
         if -20 < x < -10:
             pass
         else:
-            object_locations.append((x, y, z))
+            detected_object_locations.append((x, y, z))
             object_types.append(object_type)
 
