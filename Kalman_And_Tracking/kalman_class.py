@@ -44,8 +44,8 @@ class KalmanFilter:
                     [0, 0, 0, 0, 1, 0]])
 
         # The measurement uncertainty
-        self.R = np.diag([20, 20, 20]) 
-
+        self.R = 5 * np.eye(3)
+        
         # The identity matrix. Simply a matrix with 1 in the diagonal and 0 elsewhere.
         self.I = np.array([[1, 0, 0, 0, 0, 0],
                     [0, 1, 0, 0, 0, 0],
