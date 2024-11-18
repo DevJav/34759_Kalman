@@ -167,7 +167,11 @@ if __name__ == '__main__':
     detected_object_locations = []
     object_types = []
 
+    used_object_types = ["Pedestrian", "Car", "Cyclist"]
+
     for label in labels:
+        if get_object_type(label) not in used_object_types:
+            continue
         if int(get_frame(label)) != current_frame:
 
             # predict all objects
@@ -178,7 +182,10 @@ if __name__ == '__main__':
             distances = {}
             for object_idx, object in enumerate(detected_object_locations):
                 for kalman_idx, kalman in tracked_objects.items():
-                    distance = np.linalg.norm(np.array(object) - np.array(kalman.get_location()))
+                    if object_types[object_idx] != kalman.object_type:
+                        distance = np.inf  # Assign a very high distance if object types do not match
+                    else:
+                        distance = np.linalg.norm(np.array(object) - np.array(kalman.get_location()))
                     distances[(object_idx, kalman_idx)] = float(distance)
 
             # Create a cost matrix
